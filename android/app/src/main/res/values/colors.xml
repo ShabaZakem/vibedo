@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="vibe_bg">#FFFFFF</color>
+    <color name="colorPrimary">#2383E2</color>
+    <color name="colorPrimaryDark">#1A6BB8</color>
+    <color name="colorAccent">#2383E2</color>
+</resources>
