@@ -38,6 +38,7 @@ function viewTitle(view: View, listName?: string): { section: string; title: str
   if (view.kind === 'list') return { section: 'Списки', title: listName ?? 'Список' }
   if (view.kind === 'time') return { section: 'Час', title: 'Трекер часу' }
   if (view.kind === 'salary') return { section: 'Гроші', title: 'Заробіток' }
+  if (view.kind === 'money') return { section: 'Гроші', title: 'Облік грошей' }
   if (view.kind === 'calendar') return { section: 'Планування', title: 'Календар' }
   if (view.kind === 'stats') return { section: 'Аналітика', title: 'Статистика' }
   return { section: 'VibeDo', title: 'Налаштування' }
@@ -128,7 +129,12 @@ function NotificationBadge() {
   const paydays = useAppStore((state) => state.paydays)
   const settings = useAppStore((state) => state.settings)
   const data = useMemo(
-    () => ({ tasks, paydays, settings } as Parameters<typeof collectNotifications>[0]),
+    () => ({
+      ...useAppStore.getState(),
+      tasks,
+      paydays,
+      settings,
+    }),
     [tasks, paydays, settings],
   )
   const count = useMemo(() => collectNotifications(data).length, [data])
@@ -156,15 +162,10 @@ export function NotificationCenter() {
   const items = useMemo(
     () =>
       collectNotifications({
+        ...useAppStore.getState(),
         tasks,
         paydays,
         settings,
-        lists: [],
-        entries: [],
-        activeTimer: null,
-        schemaVersion: 2,
-        createdAt: 0,
-        updatedAt: 0,
       }).slice(0, 30),
     [tasks, paydays, settings],
   )
@@ -288,8 +289,8 @@ export function BottomNav() {
         <span>Час</span>
       </button>
       <button
-        className={cn('bn-item', (view.kind === 'salary' || view.kind === 'stats') && 'active')}
-        onClick={() => setView({ kind: 'salary' })}
+        className={cn('bn-item', (view.kind === 'money' || view.kind === 'salary') && 'active')}
+        onClick={() => setView({ kind: 'money' })}
       >
         <Wallet size={20} />
         <span>Гроші</span>

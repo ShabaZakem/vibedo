@@ -3,6 +3,11 @@ import type {
   ActiveTimer,
   AppData,
   ID,
+  MoneyBudget,
+  MoneyCategory,
+  MoneyKind,
+  MoneyRecurring,
+  MoneyTransaction,
   Payday,
   RepeatFreq,
   RepeatRule,
@@ -13,8 +18,8 @@ import type {
   TimeEntry,
   View,
 } from './types'
-import { SCHEMA_VERSION } from './constants'
-import { addDaysKey, dateKey, keyToDate, nextRepeatKey, todayKey, uid } from './lib/utils'
+import { MONEY_CATEGORY_PRESETS, SCHEMA_VERSION } from './constants'
+import { advanceRepeatDate, addDaysKey, dateKey, keyToDate, nextRepeatKey, todayKey, uid } from './lib/utils'
 import { loadAppData } from './lib/storage'
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -34,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pomodoroBreakMinutes: 5,
   pomodoroAutoBreak: true,
   paydayReminderDays: 3,
+  moneyAutoPayday: true,
 }
 
 const LIST_PALETTE = ['#2383e2', '#0f7b6c', '#6940a5', '#ad1a72', '#d9730d', '#e03e3e']
@@ -48,6 +54,21 @@ function makeList(name: string, color: string, order: number, hourlyRate: number
     createdAt: now,
     updatedAt: now,
     order,
+  }
+}
+
+function makeCategory(
+  preset: (typeof MONEY_CATEGORY_PRESETS)[number],
+): MoneyCategory {
+  const now = Date.now()
+  return {
+    id: preset.id,
+    name: preset.name,
+    color: preset.color,
+    icon: preset.icon,
+    kind: preset.kind,
+    createdAt: now,
+    updatedAt: now,
   }
 }
 
@@ -140,6 +161,7 @@ export function createSeedData(): AppData {
     date: dateKey(payDate),
     note: 'Зарплата',
     amount: null,
+    transactionId: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
@@ -151,6 +173,10 @@ export function createSeedData(): AppData {
     tasks: [welcome, plan, rate, review],
     entries: [],
     paydays: [payday],
+    categories: MONEY_CATEGORY_PRESETS.map(makeCategory),
+    transactions: [],
+    recurring: [],
+    budgets: [],
     activeTimer: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -190,6 +216,81 @@ export function normalizeRepeat(value: unknown): RepeatRule | null {
   }
 }
 
+function normalizeMoneyKind(value: unknown, fallback: MoneyKind = 'expense'): MoneyKind {
+  return value === 'income' || value === 'expense' ? value : fallback
+}
+
+function normalizeMoneyCategory(value: unknown, index: number): MoneyCategory | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Partial<MoneyCategory>
+  if (!raw.id) return null
+  const preset = MONEY_CATEGORY_PRESETS[index]
+  return {
+    id: String(raw.id),
+    name: String(raw.name || preset?.name || 'Категорія').slice(0, 60),
+    color: /^#[0-9a-f]{6}$/i.test(String(raw.color)) ? String(raw.color) : LIST_PALETTE[index % LIST_PALETTE.length],
+    icon: typeof raw.icon === 'string' ? raw.icon.slice(0, 8) : preset?.icon ?? '',
+    kind:
+      raw.kind === 'income' || raw.kind === 'expense' || raw.kind === 'both'
+        ? raw.kind
+        : preset?.kind ?? 'both',
+    createdAt: asNumber(raw.createdAt, Date.now()),
+    updatedAt: asNumber(raw.updatedAt, asNumber(raw.createdAt, Date.now())),
+  }
+}
+
+function normalizeMoneyTransaction(value: unknown): MoneyTransaction | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Partial<MoneyTransaction>
+  if (!raw.id) return null
+  return {
+    id: String(raw.id),
+    kind: normalizeMoneyKind(raw.kind),
+    amount: Math.max(0, asNumber(raw.amount, 0)),
+    categoryId: typeof raw.categoryId === 'string' ? raw.categoryId.slice(0, 80) : '',
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(raw.date)) ? String(raw.date) : todayKey(),
+    note: typeof raw.note === 'string' ? raw.note.slice(0, 500) : '',
+    recurringId: typeof raw.recurringId === 'string' && raw.recurringId ? raw.recurringId : null,
+    createdAt: asNumber(raw.createdAt, Date.now()),
+    updatedAt: asNumber(raw.updatedAt, asNumber(raw.createdAt, Date.now())),
+  }
+}
+
+function normalizeMoneyRecurring(value: unknown): MoneyRecurring | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Partial<MoneyRecurring>
+  if (!raw.id) return null
+  const repeat = normalizeRepeat(raw)
+  return {
+    id: String(raw.id),
+    kind: normalizeMoneyKind(raw.kind),
+    amount: Math.max(0, asNumber(raw.amount, 0)),
+    categoryId: typeof raw.categoryId === 'string' ? raw.categoryId.slice(0, 80) : '',
+    note: typeof raw.note === 'string' ? raw.note.slice(0, 500) : '',
+    freq: repeat?.freq ?? 'monthly',
+    interval: repeat?.interval ?? 1,
+    nextDate: /^\d{4}-\d{2}-\d{2}$/.test(String(raw.nextDate)) ? String(raw.nextDate) : todayKey(),
+    lastRunAt: raw.lastRunAt ? asNumber(raw.lastRunAt, 0) || null : null,
+    active: raw.active !== false,
+    createdAt: asNumber(raw.createdAt, Date.now()),
+    updatedAt: asNumber(raw.updatedAt, asNumber(raw.createdAt, Date.now())),
+  }
+}
+
+function normalizeMoneyBudget(value: unknown): MoneyBudget | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Partial<MoneyBudget>
+  if (!raw.id) return null
+  return {
+    id: String(raw.id),
+    categoryId: typeof raw.categoryId === 'string' && raw.categoryId ? raw.categoryId : 'all',
+    amount: Math.max(0, asNumber(raw.amount, 0)),
+    period: raw.period === 'year' ? 'year' : 'month',
+    createdAt: asNumber(raw.createdAt, Date.now()),
+    updatedAt: asNumber(raw.updatedAt, asNumber(raw.createdAt, Date.now())),
+  }
+}
+
 export function normalizeData(raw: unknown): AppData {
   if (!raw || typeof raw !== 'object') return createSeedData()
   const input = raw as Partial<AppData>
@@ -207,6 +308,7 @@ export function normalizeData(raw: unknown): AppData {
   settings.pomodoroBreakMinutes = Math.max(1, Math.min(60, asNumber(settings.pomodoroBreakMinutes, 5)))
   settings.pomodoroAutoBreak = settings.pomodoroAutoBreak !== false
   settings.paydayReminderDays = Math.max(0, Math.min(30, asNumber(settings.paydayReminderDays, 3)))
+  settings.moneyAutoPayday = settings.moneyAutoPayday !== false
   settings.currency = typeof settings.currency === 'string' && settings.currency.trim()
     ? settings.currency.trim().slice(0, 6)
     : '₴'
@@ -296,8 +398,46 @@ export function normalizeData(raw: unknown): AppData {
             payday.amount === null || payday.amount === undefined
               ? null
               : Math.max(0, asNumber(payday.amount, 0)),
+          transactionId:
+            typeof payday.transactionId === 'string' && payday.transactionId
+              ? payday.transactionId
+              : null,
           createdAt: asNumber(payday.createdAt, Date.now()),
           updatedAt: asNumber(payday.updatedAt, Date.now()),
+        }))
+    : []
+
+  const categories: MoneyCategory[] = Array.isArray(input.categories)
+    ? input.categories
+        .map((item, index) => normalizeMoneyCategory(item, index))
+        .filter((item): item is MoneyCategory => Boolean(item))
+    : []
+  if (categories.length === 0) {
+    categories.push(...MONEY_CATEGORY_PRESETS.map(makeCategory))
+  }
+  const categoryIds = new Set(categories.map((item) => item.id))
+
+  const transactions: MoneyTransaction[] = Array.isArray(input.transactions)
+    ? input.transactions
+        .map(normalizeMoneyTransaction)
+        .filter((item): item is MoneyTransaction => Boolean(item))
+        .map((item) => ({ ...item, categoryId: categoryIds.has(item.categoryId) ? item.categoryId : '' }))
+    : []
+
+  const recurring: MoneyRecurring[] = Array.isArray(input.recurring)
+    ? input.recurring
+        .map(normalizeMoneyRecurring)
+        .filter((item): item is MoneyRecurring => Boolean(item))
+        .map((item) => ({ ...item, categoryId: categoryIds.has(item.categoryId) ? item.categoryId : '' }))
+    : []
+
+  const budgets: MoneyBudget[] = Array.isArray(input.budgets)
+    ? input.budgets
+        .map(normalizeMoneyBudget)
+        .filter((item): item is MoneyBudget => Boolean(item))
+        .map((item) => ({
+          ...item,
+          categoryId: item.categoryId === 'all' || categoryIds.has(item.categoryId) ? item.categoryId : 'all',
         }))
     : []
 
@@ -316,6 +456,10 @@ export function normalizeData(raw: unknown): AppData {
     tasks,
     entries,
     paydays,
+    categories,
+    transactions,
+    recurring,
+    budgets,
     activeTimer,
     createdAt: asNumber(input.createdAt, Date.now()),
     updatedAt: asNumber(input.updatedAt, Date.now()),
@@ -330,6 +474,10 @@ export function snapshot(state: AppData): AppData {
     tasks: state.tasks,
     entries: state.entries,
     paydays: state.paydays,
+    categories: state.categories,
+    transactions: state.transactions,
+    recurring: state.recurring,
+    budgets: state.budgets,
     activeTimer: state.activeTimer,
     createdAt: state.createdAt,
     updatedAt: Date.now(),
@@ -342,6 +490,38 @@ interface ManualEntryInput {
   startedAt: number
   seconds: number
   note?: string
+}
+
+interface MoneyCategoryInput {
+  name: string
+  color?: string
+  icon?: string
+  kind?: MoneyKind | 'both'
+}
+
+interface MoneyTransactionInput {
+  kind: MoneyKind
+  amount: number
+  categoryId: ID | ''
+  date: string
+  note?: string
+  recurringId?: ID | null
+}
+
+interface MoneyRecurringInput {
+  kind: MoneyKind
+  amount: number
+  categoryId: ID | ''
+  note?: string
+  freq: RepeatFreq
+  interval?: number
+  nextDate: string
+}
+
+interface MoneyBudgetInput {
+  categoryId: ID | 'all'
+  amount: number
+  period: 'month' | 'year'
 }
 
 interface StoreState extends AppData {
@@ -390,6 +570,19 @@ interface StoreState extends AppData {
   addPayday: (input: { date: string; note?: string; amount?: number | null }) => ID
   updatePayday: (id: ID, patch: Partial<Pick<Payday, 'date' | 'note' | 'amount'>>) => void
   deletePayday: (id: ID) => void
+  addCategory: (input: MoneyCategoryInput) => ID
+  updateCategory: (id: ID, patch: Partial<MoneyCategoryInput>) => void
+  deleteCategory: (id: ID) => void
+  addTransaction: (input: MoneyTransactionInput) => ID
+  updateTransaction: (id: ID, patch: Partial<MoneyTransactionInput & { date: string }>) => void
+  deleteTransaction: (id: ID) => void
+  addRecurring: (input: MoneyRecurringInput) => ID
+  updateRecurring: (id: ID, patch: Partial<MoneyRecurringInput & { active: boolean }>) => void
+  deleteRecurring: (id: ID) => void
+  addBudget: (input: MoneyBudgetInput) => ID
+  updateBudget: (id: ID, patch: Partial<MoneyBudgetInput>) => void
+  deleteBudget: (id: ID) => void
+  runMoneyMaintenance: () => void
   updateSettings: (patch: Partial<Settings>) => void
   resetSettings: () => void
   replaceData: (data: AppData) => void
@@ -447,6 +640,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
     const loaded = await loadAppData()
     const data = loaded ? normalizeData(loaded) : createSeedData()
     set({ ...data, hydrated: true })
+    get().runMoneyMaintenance()
   },
 
   setView: (view) => set({ view, selectedTaskId: null, search: '' }),
@@ -712,6 +906,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       date,
       note: (note ?? '').trim().slice(0, 120),
       amount: amount === undefined || amount === null ? null : Math.max(0, amount),
+      transactionId: null,
       createdAt: now,
       updatedAt: now,
     }
@@ -728,6 +923,210 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
   deletePayday: (id) =>
     set((state) => ({ paydays: state.paydays.filter((payday) => payday.id !== id) })),
+
+  addCategory: ({ name, color, icon, kind }) => {
+    const now = Date.now()
+    const category: MoneyCategory = {
+      id: uid('cat_'),
+      name: name.trim().slice(0, 60) || 'Категорія',
+      color: color && /^#[0-9a-f]{6}$/i.test(color) ? color : LIST_PALETTE[0],
+      icon: typeof icon === 'string' ? icon.slice(0, 8) : '',
+      kind: kind && ['income', 'expense', 'both'].includes(kind) ? kind : 'both',
+      createdAt: now,
+      updatedAt: now,
+    }
+    set((state) => ({ categories: [...state.categories, category] }))
+    return category.id
+  },
+
+  updateCategory: (id, patch) =>
+    set((state) => ({
+      categories: state.categories.map((category) =>
+        category.id === id ? { ...category, ...patch, updatedAt: Date.now() } : category,
+      ),
+    })),
+
+  deleteCategory: (id) =>
+    set((state) => ({
+      categories: state.categories.filter((category) => category.id !== id),
+      transactions: state.transactions.map((item) =>
+        item.categoryId === id ? { ...item, categoryId: '', updatedAt: Date.now() } : item,
+      ),
+      recurring: state.recurring.map((item) =>
+        item.categoryId === id ? { ...item, categoryId: '', updatedAt: Date.now() } : item,
+      ),
+      budgets: state.budgets.map((item) =>
+        item.categoryId === id ? { ...item, categoryId: 'all', updatedAt: Date.now() } : item,
+      ),
+    })),
+
+  addTransaction: ({ kind, amount, categoryId, date, note, recurringId }) => {
+    const now = Date.now()
+    const transaction: MoneyTransaction = {
+      id: uid('tx_'),
+      kind,
+      amount: Math.max(0, Math.round(amount * 100) / 100),
+      categoryId,
+      date,
+      note: (note ?? '').trim().slice(0, 500),
+      recurringId: recurringId ?? null,
+      createdAt: now,
+      updatedAt: now,
+    }
+    set((state) => ({ transactions: [transaction, ...state.transactions] }))
+    return transaction.id
+  },
+
+  updateTransaction: (id, patch) =>
+    set((state) => ({
+      transactions: state.transactions.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              ...patch,
+              amount: patch.amount !== undefined ? Math.max(0, Math.round(patch.amount * 100) / 100) : item.amount,
+              updatedAt: Date.now(),
+            }
+          : item,
+      ),
+    })),
+
+  deleteTransaction: (id) =>
+    set((state) => ({ transactions: state.transactions.filter((item) => item.id !== id) })),
+
+  addRecurring: ({ kind, amount, categoryId, note, freq, interval, nextDate }) => {
+    const now = Date.now()
+    const item: MoneyRecurring = {
+      id: uid('rec_'),
+      kind,
+      amount: Math.max(0, Math.round(amount * 100) / 100),
+      categoryId,
+      note: (note ?? '').trim().slice(0, 500),
+      freq,
+      interval: Math.max(1, Math.min(365, Math.round(interval ?? 1))),
+      nextDate,
+      lastRunAt: null,
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    }
+    set((state) => ({ recurring: [item, ...state.recurring] }))
+    return item.id
+  },
+
+  updateRecurring: (id, patch) =>
+    set((state) => ({
+      recurring: state.recurring.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              ...patch,
+              amount: patch.amount !== undefined ? Math.max(0, Math.round(patch.amount * 100) / 100) : item.amount,
+              interval: patch.interval !== undefined
+                ? Math.max(1, Math.min(365, Math.round(patch.interval)))
+                : item.interval,
+              updatedAt: Date.now(),
+            }
+          : item,
+      ),
+    })),
+
+  deleteRecurring: (id) =>
+    set((state) => ({ recurring: state.recurring.filter((item) => item.id !== id) })),
+
+  addBudget: ({ categoryId, amount, period }) => {
+    const now = Date.now()
+    const budget: MoneyBudget = {
+      id: uid('bud_'),
+      categoryId,
+      amount: Math.max(0, Math.round(amount * 100) / 100),
+      period,
+      createdAt: now,
+      updatedAt: now,
+    }
+    set((state) => ({ budgets: [...state.budgets, budget] }))
+    return budget.id
+  },
+
+  updateBudget: (id, patch) =>
+    set((state) => ({
+      budgets: state.budgets.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              ...patch,
+              amount: patch.amount !== undefined ? Math.max(0, Math.round(patch.amount * 100) / 100) : item.amount,
+              updatedAt: Date.now(),
+            }
+          : item,
+      ),
+    })),
+
+  deleteBudget: (id) =>
+    set((state) => ({ budgets: state.budgets.filter((item) => item.id !== id) })),
+
+  runMoneyMaintenance: () => {
+    const state = get()
+    const today = todayKey()
+    const now = Date.now()
+
+    const due = state.recurring.filter((item) => item.active && item.nextDate <= today)
+    if (due.length > 0) {
+      const created: MoneyTransaction[] = []
+      const recurring = state.recurring.map((item) => {
+        if (!item.active || item.nextDate > today) return item
+        let cursor = item.nextDate
+        let guard = 0
+        while (cursor <= today && guard < 36) {
+          created.push({
+            id: uid('tx_'),
+            kind: item.kind,
+            amount: item.amount,
+            categoryId: item.categoryId,
+            date: cursor,
+            note: item.note,
+            recurringId: item.id,
+            createdAt: now,
+            updatedAt: now,
+          })
+          cursor = advanceRepeatDate(cursor, { freq: item.freq, interval: item.interval })
+          guard += 1
+        }
+        return { ...item, nextDate: cursor, lastRunAt: now, updatedAt: now }
+      })
+      set({ recurring, transactions: [...created, ...state.transactions] })
+    }
+
+    const current = get()
+    if (!current.settings.moneyAutoPayday) return
+    const category =
+      current.categories.find((item) => item.kind === 'income' && /зарп/i.test(item.name)) ??
+      current.categories.find((item) => item.kind === 'income')
+    if (!category) return
+
+    const transactions = [...current.transactions]
+    let changed = false
+    const paydays = current.paydays.map((payday) => {
+      if (payday.transactionId || payday.amount === null || payday.amount <= 0 || payday.date > today) {
+        return payday
+      }
+      const id = uid('tx_')
+      transactions.push({
+        id,
+        kind: 'income',
+        amount: payday.amount,
+        categoryId: category.id,
+        date: payday.date,
+        note: payday.note || 'Зарплата',
+        recurringId: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      changed = true
+      return { ...payday, transactionId: id, updatedAt: now }
+    })
+    if (changed) set({ paydays, transactions })
+  },
 
   updateSettings: (patch) =>
     set((state) => ({ settings: { ...state.settings, ...patch } })),

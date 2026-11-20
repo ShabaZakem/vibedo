@@ -1,4 +1,14 @@
-import type { AppData, Payday, Task, TaskList, TimeEntry } from '../types'
+import type {
+  AppData,
+  MoneyBudget,
+  MoneyCategory,
+  MoneyRecurring,
+  MoneyTransaction,
+  Payday,
+  Task,
+  TaskList,
+  TimeEntry,
+} from '../types'
 import { normalizeData } from '../store'
 
 function newer<T extends { updatedAt?: number }>(a: T, b: T): T {
@@ -34,6 +44,10 @@ export function mergeAppData(localRaw: AppData, remoteRaw: AppData): AppData {
     if (!existing || entry.endedAt > existing.endedAt) entries.set(entry.id, entry)
   }
   const paydays = mergeById<Payday>(local.paydays, remote.paydays)
+  const categories = mergeById<MoneyCategory>(local.categories, remote.categories)
+  const transactions = mergeById<MoneyTransaction>(local.transactions, remote.transactions)
+  const recurring = mergeById<MoneyRecurring>(local.recurring, remote.recurring)
+  const budgets = mergeById<MoneyBudget>(local.budgets, remote.budgets)
 
   const activeCandidates = [local.activeTimer, remote.activeTimer].filter(
     (item): item is NonNullable<typeof item> => Boolean(item),
@@ -49,6 +63,10 @@ export function mergeAppData(localRaw: AppData, remoteRaw: AppData): AppData {
     tasks,
     entries: [...entries.values()].sort((a, b) => a.startedAt - b.startedAt),
     paydays,
+    categories,
+    transactions,
+    recurring,
+    budgets,
     activeTimer,
     createdAt: Math.min(local.createdAt, remote.createdAt),
     updatedAt: Math.max(local.updatedAt, remote.updatedAt, Date.now()),

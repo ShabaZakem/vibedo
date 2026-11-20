@@ -106,7 +106,7 @@ export async function getAppInfo(): Promise<{ version: string; dataPath: string;
   const api = desktop()
   if (api) return api.info()
   return {
-    version: '1.0.2',
+    version: '1.0.3',
     dataPath: isNative ? 'локальне сховище застосунку' : 'localStorage браузера',
     platform: isNative ? 'Android' : navigator.platform,
   }

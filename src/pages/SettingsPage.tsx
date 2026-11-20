@@ -405,7 +405,7 @@ export function SettingsPage() {
   const lastSavedAt = useSaveStatus((state) => state.lastSavedAt)
 
   const [info, setInfo] = useState<{ version: string; dataPath: string; platform: string }>({
-    version: '1.0.2',
+    version: '1.0.3',
     dataPath: '',
     platform: '',
   })
@@ -707,6 +707,33 @@ export function SettingsPage() {
               step={1}
               onChange={(value) => set('paydayReminderDays', value)}
             />
+          </section>
+
+          <section className="settings-card">
+            <h3>
+              <Coins size={14} style={{ verticalAlign: -2, marginRight: 5 }} /> Облік грошей
+            </h3>
+            <div className="card-desc">
+              Повторювані операції створюються при запуску, зарплатні дні з календаря можуть автоматично потрапляти у доходи.
+            </div>
+            <div className="setting-row">
+              <div className="sr-main">
+                <div className="sr-label">Зарплата як дохід</div>
+                <div className="sr-desc">
+                  {settings.moneyAutoPayday
+                    ? 'Зарплатні дні зі вказаною сумою додаються в «Облік грошей».'
+                    : 'Зарплатні дні не створюють транзакції автоматично.'}
+                </div>
+              </div>
+              <Switch
+                checked={settings.moneyAutoPayday}
+                onChange={(value) => {
+                  set('moneyAutoPayday', value)
+                  if (value) useAppStore.getState().runMoneyMaintenance()
+                }}
+                label="Зарплата як дохід"
+              />
+            </div>
           </section>
 
           <SyncCard />

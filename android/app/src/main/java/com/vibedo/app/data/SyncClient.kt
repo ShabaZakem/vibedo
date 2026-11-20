@@ -132,7 +132,7 @@ class SyncClient {
             val (code, text) = request("http://$cleanHost:$port/api/health", "GET", timeout = 4000)
             if (code == 200) {
                 val json = JSONObject(text)
-                HealthResult(true, json.optString("app", "VibeDo"), json.optString("version", "1.0.2"))
+                HealthResult(true, json.optString("app", "VibeDo"), json.optString("version", "1.0.3"))
             } else {
                 HealthResult(false, "", "", "Комп’ютер не відповідає")
             }

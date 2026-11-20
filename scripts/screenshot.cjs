@@ -10,7 +10,7 @@ fs.mkdirSync(outDir, { recursive: true })
 ipcMain.handle('data:load', async () => createDemoData())
 ipcMain.handle('data:save', async () => ({ ok: true, savedAt: Date.now() }))
 ipcMain.handle('app:info', async () => ({
-  version: '1.0.2',
+  version: '1.0.3',
   dataPath: 'C:\\Users\\demo\\AppData\\Roaming\\vibedo',
   platform: 'win32',
 }))
@@ -97,6 +97,9 @@ app.whenReady().then(async () => {
   `)
   await wait(900)
   await capture('salary.png')
+
+  await selectView('Облік грошей')
+  await capture('money.png')
 
   await selectView('Трекер часу')
   await capture('time.png')

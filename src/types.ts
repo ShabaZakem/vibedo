@@ -9,6 +9,7 @@ export type View =
   | { kind: 'list'; id: ID }
   | { kind: 'time' }
   | { kind: 'salary' }
+  | { kind: 'money' }
   | { kind: 'calendar' }
   | { kind: 'stats' }
   | { kind: 'settings' }
@@ -81,6 +82,58 @@ export interface Payday {
   date: string
   note: string
   amount: number | null
+  /** Income transaction created automatically from this payday (if enabled). */
+  transactionId: ID | null
+  createdAt: number
+  updatedAt: number
+}
+
+export type MoneyKind = 'income' | 'expense'
+
+export interface MoneyCategory {
+  id: ID
+  name: string
+  color: string
+  /** Emoji or short glyph used as the category icon. */
+  icon: string
+  kind: MoneyKind | 'both'
+  createdAt: number
+  updatedAt: number
+}
+
+export interface MoneyTransaction {
+  id: ID
+  kind: MoneyKind
+  amount: number
+  categoryId: ID | ''
+  date: string
+  note: string
+  recurringId: ID | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface MoneyRecurring {
+  id: ID
+  kind: MoneyKind
+  amount: number
+  categoryId: ID | ''
+  note: string
+  freq: RepeatFreq
+  interval: number
+  /** Next date the transaction should be created (YYYY-MM-DD). */
+  nextDate: string
+  lastRunAt: number | null
+  active: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface MoneyBudget {
+  id: ID
+  categoryId: ID | 'all'
+  amount: number
+  period: 'month' | 'year'
   createdAt: number
   updatedAt: number
 }
@@ -102,6 +155,8 @@ export interface Settings {
   pomodoroBreakMinutes: number
   pomodoroAutoBreak: boolean
   paydayReminderDays: number
+  /** Automatically record paydays as income transactions. */
+  moneyAutoPayday: boolean
 }
 
 export interface AppData {
@@ -111,6 +166,10 @@ export interface AppData {
   tasks: Task[]
   entries: TimeEntry[]
   paydays: Payday[]
+  categories: MoneyCategory[]
+  transactions: MoneyTransaction[]
+  recurring: MoneyRecurring[]
+  budgets: MoneyBudget[]
   activeTimer: ActiveTimer | null
   createdAt: number
   updatedAt: number

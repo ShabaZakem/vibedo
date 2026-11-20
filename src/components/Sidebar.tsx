@@ -3,6 +3,7 @@ import {
   BarChart3,
   CalendarDays,
   CalendarRange,
+  CircleDollarSign,
   Clock,
   ListTodo,
   Pencil,
@@ -448,11 +449,20 @@ export function Sidebar() {
                 <span className="nav-label">Трекер часу</span>
               </button>
               <button
+                className={cn('nav-item', view.kind === 'money' && 'active')}
+                onClick={() => navigate({ kind: 'money' })}
+              >
+                <span className="nav-icon">
+                  <Wallet size={17} />
+                </span>
+                <span className="nav-label">Облік грошей</span>
+              </button>
+              <button
                 className={cn('nav-item', view.kind === 'salary' && 'active')}
                 onClick={() => navigate({ kind: 'salary' })}
               >
                 <span className="nav-icon">
-                  <Wallet size={17} />
+                  <CircleDollarSign size={17} />
                 </span>
                 <span className="nav-label">Заробіток</span>
               </button>

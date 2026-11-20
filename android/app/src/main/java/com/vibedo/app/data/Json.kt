@@ -58,6 +58,7 @@ fun AppData.toJson(): JSONObject {
         put("pomodoroBreakMinutes", settings.pomodoroBreakMinutes)
         put("pomodoroAutoBreak", settings.pomodoroAutoBreak)
         put("paydayReminderDays", settings.paydayReminderDays)
+        put("moneyAutoPayday", settings.moneyAutoPayday)
     }
     root.put("settings", settingsJson)
 
@@ -136,11 +137,74 @@ fun AppData.toJson(): JSONObject {
             put("date", payday.date)
             put("note", payday.note)
             if (payday.amount == null) put("amount", JSONObject.NULL) else put("amount", payday.amount)
+            if (payday.transactionId == null) put("transactionId", JSONObject.NULL) else put("transactionId", payday.transactionId)
             put("createdAt", payday.createdAt)
             put("updatedAt", payday.updatedAt)
         })
     }
     root.put("paydays", paydaysJson)
+
+    val categoriesJson = JSONArray()
+    for (category in categories) {
+        categoriesJson.put(JSONObject().apply {
+            put("id", category.id)
+            put("name", category.name)
+            put("color", category.color)
+            put("icon", category.icon)
+            put("kind", category.kind)
+            put("createdAt", category.createdAt)
+            put("updatedAt", category.updatedAt)
+        })
+    }
+    root.put("categories", categoriesJson)
+
+    val transactionsJson = JSONArray()
+    for (item in transactions) {
+        transactionsJson.put(JSONObject().apply {
+            put("id", item.id)
+            put("kind", item.kind)
+            put("amount", item.amount)
+            put("categoryId", item.categoryId)
+            put("date", item.date)
+            put("note", item.note)
+            if (item.recurringId == null) put("recurringId", JSONObject.NULL) else put("recurringId", item.recurringId)
+            put("createdAt", item.createdAt)
+            put("updatedAt", item.updatedAt)
+        })
+    }
+    root.put("transactions", transactionsJson)
+
+    val recurringJson = JSONArray()
+    for (item in recurring) {
+        recurringJson.put(JSONObject().apply {
+            put("id", item.id)
+            put("kind", item.kind)
+            put("amount", item.amount)
+            put("categoryId", item.categoryId)
+            put("note", item.note)
+            put("freq", item.freq)
+            put("interval", item.interval)
+            put("nextDate", item.nextDate)
+            if (item.lastRunAt == null) put("lastRunAt", JSONObject.NULL) else put("lastRunAt", item.lastRunAt)
+            put("active", item.active)
+            put("createdAt", item.createdAt)
+            put("updatedAt", item.updatedAt)
+        })
+    }
+    root.put("recurring", recurringJson)
+
+    val budgetsJson = JSONArray()
+    for (budget in budgets) {
+        budgetsJson.put(JSONObject().apply {
+            put("id", budget.id)
+            put("categoryId", budget.categoryId)
+            put("amount", budget.amount)
+            put("period", budget.period)
+            put("createdAt", budget.createdAt)
+            put("updatedAt", budget.updatedAt)
+        })
+    }
+    root.put("budgets", budgetsJson)
 
     val timer = activeTimer
     if (timer == null) {
@@ -179,6 +243,18 @@ fun normalizeRepeat(freq: String?, interval: Int?): RepeatRule? {
     return RepeatRule(freq, max(1, min(365, interval ?: 1)))
 }
 
+private val moneyDateRegex = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+private val hexColorRegex = Regex("^#[0-9a-fA-F]{6}$")
+
+private fun normalizedDate(value: String?): String =
+    if (value != null && moneyDateRegex.matches(value)) value else todayKey()
+
+private fun normalizeMoneyKind(value: String?, fallback: String = "expense"): String =
+    if (value == "income" || value == "expense") value else fallback
+
+private fun normalizeCategoryKind(value: String?, fallback: String = "both"): String =
+    if (value == "income" || value == "expense" || value == "both") value else fallback
+
 fun normalizeData(raw: JSONObject?): AppData {
     if (raw == null) return createSeedData()
     if (!raw.has("lists") || !raw.has("tasks")) return createSeedData()
@@ -210,6 +286,9 @@ fun normalizeData(raw: JSONObject?): AppData {
             if (it) settingsRaw.optBoolean("pomodoroAutoBreak", true) else true
         },
         paydayReminderDays = max(0, min(30, settingsRaw.optInt("paydayReminderDays", 3))),
+        moneyAutoPayday = settingsRaw.has("moneyAutoPayday").let {
+            if (it) settingsRaw.optBoolean("moneyAutoPayday", true) else true
+        },
     )
 
     val palette = LIST_COLORS
@@ -319,8 +398,106 @@ fun normalizeData(raw: JSONObject?): AppData {
                     date = if (Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(date)) date else todayKey(),
                     note = item.optString("note", "").take(120),
                     amount = item.optDoubleOrNull("amount")?.let { max(0.0, it) },
+                    transactionId = item.optStringOrNull("transactionId")?.takeIf { it.isNotBlank() },
                     createdAt = item.optLong("createdAt", System.currentTimeMillis()),
                     updatedAt = item.optLong("updatedAt", System.currentTimeMillis()),
+                ),
+            )
+        }
+    }
+
+    val categories = mutableListOf<MoneyCategory>()
+    raw.optJSONArray("categories")?.let { array ->
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val id = item.optString("id", "").take(80)
+            if (id.isBlank()) continue
+            val preset = MONEY_CATEGORY_PRESETS.getOrNull(index)
+            val now = System.currentTimeMillis()
+            val createdAt = item.optLong("createdAt", now)
+            categories.add(
+                MoneyCategory(
+                    id = id,
+                    name = item.optString("name", preset?.name ?: "Категорія").take(60).ifBlank { preset?.name ?: "Категорія" },
+                    color = item.optString("color", "").takeIf { hexColorRegex.matches(it) }
+                        ?: preset?.color ?: palette[index % palette.size],
+                    icon = item.optString("icon", "").take(8),
+                    kind = normalizeCategoryKind(item.optStringOrNull("kind"), preset?.kind ?: "both"),
+                    createdAt = createdAt,
+                    updatedAt = item.optLong("updatedAt", createdAt),
+                ),
+            )
+        }
+    }
+    if (categories.isEmpty()) categories.addAll(MONEY_CATEGORY_PRESETS)
+    val categoryIds = categories.map { it.id }.toSet()
+
+    val transactions = mutableListOf<MoneyTransaction>()
+    raw.optJSONArray("transactions")?.let { array ->
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val id = item.optString("id", "")
+            if (id.isBlank()) continue
+            val createdAt = item.optLong("createdAt", System.currentTimeMillis())
+            transactions.add(
+                MoneyTransaction(
+                    id = id,
+                    kind = normalizeMoneyKind(item.optStringOrNull("kind")),
+                    amount = max(0.0, asNumber(item.optDoubleOrNull("amount"), 0.0)),
+                    categoryId = item.optString("categoryId", "").take(80).takeIf { it in categoryIds } ?: "",
+                    date = normalizedDate(item.optStringOrNull("date")),
+                    note = item.optString("note", "").take(500),
+                    recurringId = item.optStringOrNull("recurringId")?.takeIf { it.isNotBlank() },
+                    createdAt = createdAt,
+                    updatedAt = item.optLong("updatedAt", createdAt),
+                ),
+            )
+        }
+    }
+
+    val recurring = mutableListOf<MoneyRecurring>()
+    raw.optJSONArray("recurring")?.let { array ->
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val id = item.optString("id", "")
+            if (id.isBlank()) continue
+            val repeat = normalizeRepeat(item.optStringOrNull("freq"), item.optInt("interval", 1))
+            val createdAt = item.optLong("createdAt", System.currentTimeMillis())
+            recurring.add(
+                MoneyRecurring(
+                    id = id,
+                    kind = normalizeMoneyKind(item.optStringOrNull("kind")),
+                    amount = max(0.0, asNumber(item.optDoubleOrNull("amount"), 0.0)),
+                    categoryId = item.optString("categoryId", "").take(80).takeIf { it in categoryIds } ?: "",
+                    note = item.optString("note", "").take(500),
+                    freq = repeat?.freq ?: "monthly",
+                    interval = repeat?.interval ?: 1,
+                    nextDate = normalizedDate(item.optStringOrNull("nextDate")),
+                    lastRunAt = item.optLongOrNull("lastRunAt")?.takeIf { it > 0 },
+                    active = item.optBoolean("active", true),
+                    createdAt = createdAt,
+                    updatedAt = item.optLong("updatedAt", createdAt),
+                ),
+            )
+        }
+    }
+
+    val budgets = mutableListOf<MoneyBudget>()
+    raw.optJSONArray("budgets")?.let { array ->
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val id = item.optString("id", "")
+            if (id.isBlank()) continue
+            val categoryId = item.optString("categoryId", "all").take(80)
+            val createdAt = item.optLong("createdAt", System.currentTimeMillis())
+            budgets.add(
+                MoneyBudget(
+                    id = id,
+                    categoryId = if (categoryId == "all" || categoryId in categoryIds) categoryId else "all",
+                    amount = max(0.0, asNumber(item.optDoubleOrNull("amount"), 0.0)),
+                    period = if (item.optString("period", "month") == "year") "year" else "month",
+                    createdAt = createdAt,
+                    updatedAt = item.optLong("updatedAt", createdAt),
                 ),
             )
         }
@@ -338,6 +515,10 @@ fun normalizeData(raw: JSONObject?): AppData {
         tasks = tasks,
         entries = entries,
         paydays = paydays,
+        categories = categories,
+        transactions = transactions,
+        recurring = recurring,
+        budgets = budgets,
         activeTimer = activeTimer,
         createdAt = raw.optLong("createdAt", System.currentTimeMillis()),
         updatedAt = raw.optLong("updatedAt", System.currentTimeMillis()),
@@ -417,7 +598,15 @@ fun createSeedData(): AppData {
     val nowDate = LocalDate.now()
     var payDate = nowDate.withDayOfMonth(5)
     if (dateKey(payDate) < today) payDate = nowDate.plusMonths(1).withDayOfMonth(5)
-    val payday = Payday(uid("pay_"), dateKey(payDate), "Зарплата", null, now, now)
+    val payday = Payday(
+        id = uid("pay_"),
+        date = dateKey(payDate),
+        note = "Зарплата",
+        amount = null,
+        transactionId = null,
+        createdAt = now,
+        updatedAt = now,
+    )
 
     return AppData(
         schemaVersion = SCHEMA_VERSION,
@@ -426,6 +615,10 @@ fun createSeedData(): AppData {
         tasks = listOf(welcome, plan, rate, review),
         entries = emptyList(),
         paydays = listOf(payday),
+        categories = MONEY_CATEGORY_PRESETS,
+        transactions = emptyList(),
+        recurring = emptyList(),
+        budgets = emptyList(),
         activeTimer = null,
         createdAt = now,
         updatedAt = now,
@@ -455,10 +648,14 @@ fun mergeAppData(localRaw: AppData, remoteRaw: AppData): AppData {
         return map.values.toList()
     }
 
-    val lists = merge(local.lists, remote.lists, { it.id }, { it.updatedAt })
+    val lists = merge(local.lists, remote.lists, { it.id }, { it.updatedAt }).sortedBy { it.order }
     val tasks = merge(local.tasks, remote.tasks, { it.id }, { it.updatedAt })
-    val entries = merge(local.entries, remote.entries, { it.id }, { 0L })
+    val entries = merge(local.entries, remote.entries, { it.id }, { it.endedAt }).sortedBy { it.startedAt }
     val paydays = merge(local.paydays, remote.paydays, { it.id }, { it.updatedAt })
+    val categories = merge(local.categories, remote.categories, { it.id }, { it.updatedAt })
+    val transactions = merge(local.transactions, remote.transactions, { it.id }, { it.updatedAt })
+    val recurring = merge(local.recurring, remote.recurring, { it.id }, { it.updatedAt })
+    val budgets = merge(local.budgets, remote.budgets, { it.id }, { it.updatedAt })
 
     val settings = if (remote.updatedAt > local.updatedAt) remote.settings else local.settings
     val activeTimer = when {
@@ -475,6 +672,10 @@ fun mergeAppData(localRaw: AppData, remoteRaw: AppData): AppData {
         tasks = tasks,
         entries = entries,
         paydays = paydays,
+        categories = categories,
+        transactions = transactions,
+        recurring = recurring,
+        budgets = budgets,
         activeTimer = activeTimer,
         createdAt = min(local.createdAt, remote.createdAt),
         updatedAt = max(local.updatedAt, remote.updatedAt),

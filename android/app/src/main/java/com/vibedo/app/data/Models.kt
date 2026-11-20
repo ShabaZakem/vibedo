@@ -1,6 +1,6 @@
 package com.vibedo.app.data
 
-const val SCHEMA_VERSION = 2
+const val SCHEMA_VERSION = 3
 const val DEFAULT_SYNC_PORT = 47823
 
 val ACCENTS = listOf(
@@ -18,6 +18,22 @@ val LIST_COLORS = listOf(
 )
 
 val TAG_COLORS = LIST_COLORS
+
+/** Stable IDs are important: regenerating them would duplicate categories on sync. */
+val MONEY_CATEGORY_PRESETS = listOf(
+    MoneyCategory(id = "cat_salary", name = "Зарплата", color = "#0f7b6c", icon = "💼", kind = "income"),
+    MoneyCategory(id = "cat_freelance", name = "Фріланс", color = "#2383e2", icon = "💻", kind = "income"),
+    MoneyCategory(id = "cat_gift", name = "Подарунок", color = "#6940a5", icon = "🎁", kind = "income"),
+    MoneyCategory(id = "cat_other_in", name = "Інший дохід", color = "#8a6a00", icon = "➕", kind = "income"),
+    MoneyCategory(id = "cat_home", name = "Житло", color = "#d9730d", icon = "🏠", kind = "expense"),
+    MoneyCategory(id = "cat_food", name = "Їжа", color = "#e03e3e", icon = "🛒", kind = "expense"),
+    MoneyCategory(id = "cat_transport", name = "Транспорт", color = "#2383e2", icon = "🚌", kind = "expense"),
+    MoneyCategory(id = "cat_fun", name = "Розваги", color = "#ad1a72", icon = "🎬", kind = "expense"),
+    MoneyCategory(id = "cat_health", name = "Здоров'я", color = "#0f7b6c", icon = "💊", kind = "expense"),
+    MoneyCategory(id = "cat_education", name = "Навчання", color = "#6940a5", icon = "📚", kind = "expense"),
+    MoneyCategory(id = "cat_subs", name = "Підписки", color = "#8a6a00", icon = "🔁", kind = "expense"),
+    MoneyCategory(id = "cat_other_out", name = "Інша витрата", color = "#6f6e69", icon = "➖", kind = "expense"),
+)
 
 data class RepeatRule(
     val freq: String,
@@ -83,6 +99,53 @@ data class Payday(
     val date: String,
     val note: String = "",
     val amount: Double? = null,
+    val transactionId: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+)
+
+data class MoneyCategory(
+    val id: String,
+    val name: String,
+    val color: String,
+    val icon: String = "",
+    val kind: String = "both", // income | expense | both
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+)
+
+data class MoneyTransaction(
+    val id: String,
+    val kind: String = "expense", // income | expense
+    val amount: Double = 0.0,
+    val categoryId: String = "",
+    val date: String,
+    val note: String = "",
+    val recurringId: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+)
+
+data class MoneyRecurring(
+    val id: String,
+    val kind: String = "expense",
+    val amount: Double = 0.0,
+    val categoryId: String = "",
+    val note: String = "",
+    val freq: String = "monthly",
+    val interval: Int = 1,
+    val nextDate: String,
+    val lastRunAt: Long? = null,
+    val active: Boolean = true,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+)
+
+data class MoneyBudget(
+    val id: String,
+    val categoryId: String = "all",
+    val amount: Double = 0.0,
+    val period: String = "month", // month | year
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
 )
@@ -104,6 +167,7 @@ data class Settings(
     val pomodoroBreakMinutes: Int = 5,
     val pomodoroAutoBreak: Boolean = true,
     val paydayReminderDays: Int = 3,
+    val moneyAutoPayday: Boolean = true,
 )
 
 data class AppData(
@@ -113,6 +177,10 @@ data class AppData(
     val tasks: List<Task> = emptyList(),
     val entries: List<TimeEntry> = emptyList(),
     val paydays: List<Payday> = emptyList(),
+    val categories: List<MoneyCategory> = emptyList(),
+    val transactions: List<MoneyTransaction> = emptyList(),
+    val recurring: List<MoneyRecurring> = emptyList(),
+    val budgets: List<MoneyBudget> = emptyList(),
     val activeTimer: ActiveTimer? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),

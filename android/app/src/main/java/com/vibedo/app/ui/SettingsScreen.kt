@@ -277,6 +277,26 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(12.dp))
         SettingsCard(
+            icon = Icons.Rounded.Paid,
+            title = "Облік грошей",
+            description = "Повторювані операції створюються при запуску, зарплатні дні з календаря можуть автоматично потрапляти у доходи.",
+        ) {
+            SettingsSwitch(
+                label = "Зарплата як дохід",
+                description = if (settings.moneyAutoPayday)
+                    "Зарплатні дні зі вказаною сумою додаються в «Гроші»."
+                else "Зарплатні дні не створюють транзакції автоматично.",
+                checked = settings.moneyAutoPayday,
+                accent = accent,
+                onChange = { value ->
+                    vm.updateSettings { it.copy(moneyAutoPayday = value) }
+                    if (value) vm.runMoneyMaintenance()
+                },
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        SettingsCard(
             icon = Icons.Rounded.Wifi,
             title = "Синхронізація по Wi-Fi",
             description = "Прямий обмін між комп'ютером і телефоном у спільній мережі. Без інтернету, акаунтів і хмарних серверів.",

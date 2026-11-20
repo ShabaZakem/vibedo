@@ -55,6 +55,11 @@ function mergeData(local, remote) {
     if (!existing || (entry.endedAt || 0) > (existing.endedAt || 0)) entries.set(entry.id, entry)
   }
 
+  const categories = mergeById(local.categories, remote.categories)
+  const transactions = mergeById(local.transactions, remote.transactions)
+  const recurring = mergeById(local.recurring, remote.recurring)
+  const budgets = mergeById(local.budgets, remote.budgets)
+
   const timerCandidates = [local.activeTimer, remote.activeTimer].filter(Boolean)
   const activeTimer = timerCandidates.length
     ? timerCandidates.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))[0]
@@ -68,6 +73,10 @@ function mergeData(local, remote) {
     tasks: mergeById(local.tasks, remote.tasks),
     entries: [...entries.values()].sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0)),
     paydays: mergeById(local.paydays, remote.paydays),
+    categories,
+    transactions,
+    recurring,
+    budgets,
     activeTimer,
     createdAt: Math.min(local.createdAt || Date.now(), remote.createdAt || Date.now()),
     updatedAt: Math.max(local.updatedAt || 0, remote.updatedAt || 0, Date.now()),
@@ -182,7 +191,7 @@ function start(options) {
           send(res, 200, {
             ok: true,
             app: 'VibeDo',
-            version: options.version || '1.0.2',
+            version: options.version || '1.0.3',
             clients: clients.size,
           })
           return

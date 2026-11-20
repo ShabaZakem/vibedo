@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ListAlt
+import androidx.compose.material.icons.rounded.Paid
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
@@ -87,14 +88,6 @@ fun DrawerContent(
             Column(Modifier.weight(1f)) {
                 Text("VibeDo", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = p.text)
                 Text("v${vm.appVersion()} · локально", fontSize = 10.5.sp, color = p.text3)
-            }
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(p.surface3)
-                    .padding(horizontal = 6.dp, vertical = 3.dp),
-            ) {
-                Text("1.0.2", fontSize = 9.5.sp, color = p.text2, fontWeight = FontWeight.Medium)
             }
         }
 
@@ -220,6 +213,9 @@ fun DrawerContent(
             }
             DrawerNavItem(Icons.Rounded.Schedule, "Трекер часу", null, vm.view is View.Time) {
                 vm.navigate(View.Time); onClose()
+            }
+            DrawerNavItem(Icons.Rounded.Paid, "Облік грошей", null, vm.view is View.Money) {
+                vm.navigate(View.Money); onClose()
             }
             DrawerNavItem(Icons.Rounded.Wallet, "Заробіток", null, vm.view is View.Salary) {
                 vm.navigate(View.Salary); onClose()

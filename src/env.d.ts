@@ -13,6 +13,8 @@ export interface DesktopSyncState {
 
 interface DesktopApi {
   isDesktop: boolean
+  /** True on Linux, where the window is frameless and needs in-app controls. */
+  windowControls: boolean
   load: () => Promise<unknown | null>
   save: (data: AppData) => Promise<{ ok: boolean; error?: string; path?: string; savedAt?: number }>
   exportData: (data: AppData) => Promise<{ ok: boolean; canceled?: boolean; error?: string; path?: string }>
@@ -26,6 +28,7 @@ interface DesktopApi {
   openDataFolder: () => Promise<{ ok: boolean; error?: string }>
   setTheme: (theme: 'light' | 'dark') => Promise<{ ok: boolean }>
   focusWindow: () => Promise<{ ok: boolean }>
+  windowAction: (action: 'minimize' | 'maximize' | 'close') => Promise<{ ok: boolean }>
   syncStart: (payload: { pin: string; port: number }) => Promise<DesktopSyncState>
   syncStop: () => Promise<DesktopSyncState>
   syncStatus: () => Promise<DesktopSyncState>

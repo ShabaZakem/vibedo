@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('desktop', {
   isDesktop: true,
+  windowControls: process.platform === 'linux',
   load: () => ipcRenderer.invoke('data:load'),
   save: (data) => ipcRenderer.invoke('data:save', data),
   exportData: (data) => ipcRenderer.invoke('data:export', data),
@@ -11,6 +12,7 @@ contextBridge.exposeInMainWorld('desktop', {
   openDataFolder: () => ipcRenderer.invoke('app:openDataFolder'),
   setTheme: (theme) => ipcRenderer.invoke('theme:set', theme),
   focusWindow: () => ipcRenderer.invoke('window:focus'),
+  windowAction: (action) => ipcRenderer.invoke('window:action', action),
   syncStart: (payload) => ipcRenderer.invoke('sync:start', payload),
   syncStop: () => ipcRenderer.invoke('sync:stop'),
   syncStatus: () => ipcRenderer.invoke('sync:status'),

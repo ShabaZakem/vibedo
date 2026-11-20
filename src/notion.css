@@ -1,5 +1,5 @@
 /* ==========================================================================
-   VibeDo 1.0.2 — Notion-like visual layer
+   VibeDo 1.0.3 — Notion-like visual layer
    Loaded after styles.css, so these rules intentionally override the
    original Fluent tokens and component skins while keeping the same markup.
    ========================================================================== */
@@ -29,9 +29,8 @@
   --shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.04), 0 2px 6px rgba(15, 15, 15, 0.04);
   --shadow: 0 12px 34px rgba(15, 15, 15, 0.12), 0 2px 8px rgba(15, 15, 15, 0.06);
   --shadow-drawer: -14px 0 44px rgba(15, 15, 15, 0.12);
-  --font: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --font-display: 'Inter', 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system,
-    sans-serif;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-display: var(--font);
 }
 
 :root[data-theme='dark'] {
@@ -2268,6 +2267,72 @@ select.input:focus {
 
 @media (min-width: 901px) {
   .mobile-only {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   1.0.3 — quiet interface: fewer chrome elements, more room for content
+   ========================================================================== */
+
+:root {
+  --shadow: 0 6px 20px rgba(15, 15, 15, 0.08), 0 1px 3px rgba(15, 15, 15, 0.05);
+}
+
+:root[data-theme='dark'] {
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Decorative subtitles and duplicated labels become noise at this point. */
+.brand-sub,
+.profile-sub,
+.titlebar .tb-sep,
+.eyebrow {
+  display: none;
+}
+
+.titlebar .tb-dot {
+  width: 6px;
+  height: 6px;
+}
+
+/* The sync state stays available as a tooltip instead of taking horizontal space. */
+.sync-pill span {
+  display: none;
+}
+
+.sync-pill {
+  min-width: 0;
+  padding: 6px;
+}
+
+.section-title {
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11.5px;
+}
+
+.card {
+  box-shadow: none;
+}
+
+.page-header {
+  padding-bottom: 14px;
+}
+
+.page-title {
+  font-weight: 600;
+  letter-spacing: -0.018em;
+}
+
+/* Keep the sidebar walkable instead of decorative. */
+.nav-item,
+.list-item {
+  min-height: 30px;
+}
+
+@media (max-width: 640px) {
+  .sync-pill {
     display: none;
   }
 }

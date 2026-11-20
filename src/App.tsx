@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Minus, Square, X } from 'lucide-react'
 import { Sidebar } from './components/Sidebar'
 import { TaskView } from './components/TaskView'
 import { TaskDetails } from './components/TaskDetails'
@@ -7,6 +8,7 @@ import { BottomNav, MobileFab, TopBar } from './components/TopBar'
 import { ToastHost, LogoMark, toast } from './components/ui'
 import { CalendarPage } from './pages/CalendarPage'
 import { SalaryPage } from './pages/SalaryPage'
+import { MoneyPage } from './pages/MoneyPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { StatsPage } from './pages/StatsPage'
 import { TimePage } from './pages/TimePage'
@@ -46,6 +48,19 @@ export default function App() {
 
   useEffect(() => {
     if (hydrated) setupPersistence()
+  }, [hydrated])
+
+  // Recurring money operations and payday income are applied on startup and
+  // whenever the app regains focus after being left open overnight.
+  useEffect(() => {
+    if (!hydrated) return
+    const run = () => useAppStore.getState().runMoneyMaintenance()
+    const timer = window.setInterval(run, 30 * 60 * 1000)
+    window.addEventListener('focus', run)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', run)
+    }
   }, [hydrated])
 
   useEffect(() => {
@@ -151,17 +166,7 @@ export default function App() {
     if (!hydrated || !isNative) return
     const timer = window.setTimeout(() => {
       const state = useAppStore.getState()
-      void scheduleNativeNotifications({
-        schemaVersion: state.schemaVersion,
-        settings: state.settings,
-        lists: state.lists,
-        tasks: state.tasks,
-        entries: state.entries,
-        paydays: state.paydays,
-        activeTimer: state.activeTimer,
-        createdAt: state.createdAt,
-        updatedAt: state.updatedAt,
-      })
+      void scheduleNativeNotifications(snapshot(state))
     }, 1200)
     return () => window.clearTimeout(timer)
   }, [hydrated, tasks, paydays, settings])
@@ -180,18 +185,39 @@ export default function App() {
   return (
     <>
       {isDesktop && (
-        <div className="titlebar">
+        <div className={cn('titlebar', window.desktop?.windowControls && 'linux-controls')}>
           <span className="tb-brand">
             <LogoMark size={13} />
             VibeDo
           </span>
-          <span className="tb-sep">·</span>
-          <span>локальний планувальник</span>
-          <span className="tb-sep">·</span>
-          <span>дані лише на цьому ПК</span>
           <span className="spacer" />
           <span className="tb-dot" />
           <span>приватно</span>
+          {window.desktop?.windowControls && (
+            <span className="window-controls">
+              <button
+                className="window-control"
+                aria-label="Згорнути"
+                onClick={() => void window.desktop?.windowAction('minimize')}
+              >
+                <Minus size={13} />
+              </button>
+              <button
+                className="window-control"
+                aria-label="Розгорнути"
+                onClick={() => void window.desktop?.windowAction('maximize')}
+              >
+                <Square size={11} />
+              </button>
+              <button
+                className="window-control close"
+                aria-label="Закрити"
+                onClick={() => void window.desktop?.windowAction('close')}
+              >
+                <X size={13} />
+              </button>
+            </span>
+          )}
         </div>
       )}
       <div
@@ -208,6 +234,7 @@ export default function App() {
           {(view.kind === 'smart' || view.kind === 'list') && <TaskView />}
           {view.kind === 'time' && <TimePage />}
           {view.kind === 'salary' && <SalaryPage />}
+          {view.kind === 'money' && <MoneyPage />}
           {view.kind === 'calendar' && <CalendarPage />}
           {view.kind === 'stats' && <StatsPage />}
           {view.kind === 'settings' && <SettingsPage />}

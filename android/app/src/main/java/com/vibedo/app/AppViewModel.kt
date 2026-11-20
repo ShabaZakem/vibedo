@@ -13,6 +13,10 @@ import com.vibedo.app.data.DataStorage
 import com.vibedo.app.data.DEFAULT_SYNC_PORT
 import com.vibedo.app.data.LIST_COLORS
 import com.vibedo.app.data.LegacyMigration
+import com.vibedo.app.data.MoneyBudget
+import com.vibedo.app.data.MoneyCategory
+import com.vibedo.app.data.MoneyRecurring
+import com.vibedo.app.data.MoneyTransaction
 import com.vibedo.app.data.Payday
 import com.vibedo.app.data.RepeatRule
 import com.vibedo.app.data.Settings
@@ -52,6 +56,7 @@ sealed class View {
     data class Smart(val id: String) : View()
     data class ListView(val id: String) : View()
     data object Time : View()
+    data object Money : View()
     data object Salary : View()
     data object Calendar : View()
     data object Stats : View()
@@ -113,6 +118,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var lastAlarmFingerprint: String? = null
     private var pomodoroSavedAt = 0L
     private var autoSyncJob: Job? = null
+    private var moneyMaintenanceJob: Job? = null
     private var syncToken: String = ""
 
     init {
@@ -147,6 +153,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         Notifications.scheduleAll(getApplication(), data)
         startPomodoroLoop()
         startAutoSync()
+        runMoneyMaintenance()
+        startMoneyMaintenanceLoop()
     }
 
     /* ------------------------------- navigation ------------------------------ */
@@ -584,6 +592,295 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         persist()
     }
 
+    /* ------------------------------- money ----------------------------------- */
+
+    private val moneyColorRegex = Regex("^#[0-9a-fA-F]{6}$")
+
+    private fun moneyAmount(value: Double): Double =
+        (max(0.0, if (value.isFinite()) value else 0.0) * 100).roundToInt() / 100.0
+
+    private fun startMoneyMaintenanceLoop() {
+        moneyMaintenanceJob?.cancel()
+        moneyMaintenanceJob = viewModelScope.launch {
+            while (isActive) {
+                delay(30 * 60_000L)
+                runMoneyMaintenance()
+            }
+        }
+    }
+
+    fun addCategory(name: String, color: String? = null, icon: String? = null, kind: String = "both"): String {
+        val now = System.currentTimeMillis()
+        val category = MoneyCategory(
+            id = uid("cat_"),
+            name = name.trim().take(60).ifBlank { "Категорія" },
+            color = color?.takeIf { moneyColorRegex.matches(it) } ?: LIST_COLORS.first(),
+            icon = icon?.take(8) ?: "",
+            kind = if (kind in setOf("income", "expense", "both")) kind else "both",
+            createdAt = now,
+            updatedAt = now,
+        )
+        mutate { it.copy(categories = it.categories + category) }
+        return category.id
+    }
+
+    fun updateCategory(
+        id: String,
+        name: String? = null,
+        color: String? = null,
+        icon: String? = null,
+        kind: String? = null,
+    ) {
+        mutate { current ->
+            current.copy(categories = current.categories.map { category ->
+                if (category.id != id) category else category.copy(
+                    name = name?.trim()?.take(60)?.ifBlank { category.name } ?: category.name,
+                    color = color?.takeIf { moneyColorRegex.matches(it) } ?: category.color,
+                    icon = icon?.take(8) ?: category.icon,
+                    kind = kind?.takeIf { it in setOf("income", "expense", "both") } ?: category.kind,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            })
+        }
+    }
+
+    fun deleteCategory(id: String) {
+        val now = System.currentTimeMillis()
+        mutate { current ->
+            current.copy(
+                categories = current.categories.filter { it.id != id },
+                transactions = current.transactions.map {
+                    if (it.categoryId == id) it.copy(categoryId = "", updatedAt = now) else it
+                },
+                recurring = current.recurring.map {
+                    if (it.categoryId == id) it.copy(categoryId = "", updatedAt = now) else it
+                },
+                budgets = current.budgets.map {
+                    if (it.categoryId == id) it.copy(categoryId = "all", updatedAt = now) else it
+                },
+            )
+        }
+    }
+
+    fun addTransaction(
+        kind: String,
+        amount: Double,
+        categoryId: String,
+        date: String,
+        note: String = "",
+        recurringId: String? = null,
+    ): String {
+        val now = System.currentTimeMillis()
+        val transaction = MoneyTransaction(
+            id = uid("tx_"),
+            kind = if (kind == "income") "income" else "expense",
+            amount = moneyAmount(amount),
+            categoryId = categoryId,
+            date = date,
+            note = note.trim().take(500),
+            recurringId = recurringId,
+            createdAt = now,
+            updatedAt = now,
+        )
+        mutate { it.copy(transactions = listOf(transaction) + it.transactions) }
+        return transaction.id
+    }
+
+    fun updateTransaction(
+        id: String,
+        kind: String? = null,
+        amount: Double? = null,
+        categoryId: String? = null,
+        date: String? = null,
+        note: String? = null,
+    ) {
+        mutate { current ->
+            current.copy(transactions = current.transactions.map { item ->
+                if (item.id != id) item else item.copy(
+                    kind = if (kind == "income" || kind == "expense") kind else item.kind,
+                    amount = if (amount != null) moneyAmount(amount) else item.amount,
+                    categoryId = categoryId ?: item.categoryId,
+                    date = date ?: item.date,
+                    note = note?.trim()?.take(500) ?: item.note,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            })
+        }
+    }
+
+    fun deleteTransaction(id: String) {
+        mutate { current ->
+            current.copy(transactions = current.transactions.filter { it.id != id })
+        }
+    }
+
+    fun addRecurring(
+        kind: String,
+        amount: Double,
+        categoryId: String,
+        note: String,
+        freq: String,
+        interval: Int,
+        nextDate: String,
+    ): String {
+        val now = System.currentTimeMillis()
+        val item = MoneyRecurring(
+            id = uid("rec_"),
+            kind = if (kind == "income") "income" else "expense",
+            amount = moneyAmount(amount),
+            categoryId = categoryId,
+            note = note.trim().take(500),
+            freq = freq,
+            interval = max(1, min(365, interval)),
+            nextDate = nextDate,
+            createdAt = now,
+            updatedAt = now,
+        )
+        mutate { it.copy(recurring = listOf(item) + it.recurring) }
+        return item.id
+    }
+
+    fun updateRecurring(
+        id: String,
+        kind: String? = null,
+        amount: Double? = null,
+        categoryId: String? = null,
+        note: String? = null,
+        freq: String? = null,
+        interval: Int? = null,
+        nextDate: String? = null,
+        active: Boolean? = null,
+    ) {
+        mutate { current ->
+            current.copy(recurring = current.recurring.map { item ->
+                if (item.id != id) item else item.copy(
+                    kind = if (kind == "income" || kind == "expense") kind else item.kind,
+                    amount = if (amount != null) moneyAmount(amount) else item.amount,
+                    categoryId = categoryId ?: item.categoryId,
+                    note = note?.trim()?.take(500) ?: item.note,
+                    freq = freq ?: item.freq,
+                    interval = if (interval != null) max(1, min(365, interval)) else item.interval,
+                    nextDate = nextDate ?: item.nextDate,
+                    active = active ?: item.active,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            })
+        }
+    }
+
+    fun deleteRecurring(id: String) {
+        mutate { it.copy(recurring = it.recurring.filter { item -> item.id != id }) }
+    }
+
+    fun addBudget(categoryId: String, amount: Double, period: String): String {
+        val now = System.currentTimeMillis()
+        val budget = MoneyBudget(
+            id = uid("bud_"),
+            categoryId = categoryId,
+            amount = moneyAmount(amount),
+            period = if (period == "year") "year" else "month",
+            createdAt = now,
+            updatedAt = now,
+        )
+        mutate { it.copy(budgets = it.budgets + budget) }
+        return budget.id
+    }
+
+    fun updateBudget(id: String, categoryId: String? = null, amount: Double? = null, period: String? = null) {
+        mutate { current ->
+            current.copy(budgets = current.budgets.map { budget ->
+                if (budget.id != id) budget else budget.copy(
+                    categoryId = categoryId ?: budget.categoryId,
+                    amount = if (amount != null) moneyAmount(amount) else budget.amount,
+                    period = if (period == "year" || period == "month") period else budget.period,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            })
+        }
+    }
+
+    fun deleteBudget(id: String) {
+        mutate { it.copy(budgets = it.budgets.filter { it.id != id }) }
+    }
+
+    /** Applies due recurring operations and turns past paydays into income once. */
+    fun runMoneyMaintenance() {
+        if (!hydrated) return
+        val today = todayKey()
+        val now = System.currentTimeMillis()
+        val created = mutableListOf<MoneyTransaction>()
+        var recurringChanged = false
+
+        val recurring = data.recurring.map { item ->
+            if (!item.active || item.nextDate > today) return@map item
+            var cursor = item.nextDate
+            var guard = 0
+            while (cursor <= today && guard < 36) {
+                created.add(
+                    MoneyTransaction(
+                        id = uid("tx_"),
+                        kind = item.kind,
+                        amount = item.amount,
+                        categoryId = item.categoryId,
+                        date = cursor,
+                        note = item.note,
+                        recurringId = item.id,
+                        createdAt = now,
+                        updatedAt = now,
+                    ),
+                )
+                cursor = advanceRepeatDate(cursor, RepeatRule(item.freq, item.interval))
+                guard += 1
+            }
+            recurringChanged = true
+            item.copy(nextDate = cursor, lastRunAt = now, updatedAt = now)
+        }
+
+        var paydaysChanged = false
+        var paydays = data.paydays
+        if (data.settings.moneyAutoPayday) {
+            val incomeCategories = data.categories.filter { it.kind == "income" }
+            val salaryCategory = incomeCategories.firstOrNull { it.name.contains("зарп", ignoreCase = true) }
+                ?: incomeCategories.firstOrNull()
+            if (salaryCategory != null) {
+                val newTransactions = mutableListOf<MoneyTransaction>()
+                paydays = paydays.map { payday ->
+                    val amount = payday.amount
+                    if (payday.transactionId != null || amount == null || amount <= 0 || payday.date > today) {
+                        payday
+                    } else {
+                        val id = uid("tx_")
+                        newTransactions.add(
+                            MoneyTransaction(
+                                id = id,
+                                kind = "income",
+                                amount = moneyAmount(amount),
+                                categoryId = salaryCategory.id,
+                                date = payday.date,
+                                note = payday.note.ifBlank { "Зарплата" },
+                                recurringId = null,
+                                createdAt = now,
+                                updatedAt = now,
+                            ),
+                        )
+                        paydaysChanged = true
+                        payday.copy(transactionId = id, updatedAt = now)
+                    }
+                }
+                created.addAll(newTransactions)
+            }
+        }
+
+        if (!recurringChanged && !paydaysChanged) return
+        mutate { current ->
+            current.copy(
+                recurring = recurring,
+                paydays = paydays,
+                transactions = created + current.transactions,
+            )
+        }
+    }
+
     /* -------------------------------- settings ------------------------------- */
 
     fun updateSettings(transform: (Settings) -> Settings) {
@@ -599,6 +896,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun replaceData(incoming: AppData) {
         data = normalizeData(incoming.toJson())
         persist()
+        runMoneyMaintenance()
     }
 
     fun resetAllData() {
@@ -617,6 +915,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val parsed = normalizeData(JSONObject(raw))
         data = parsed
         persist()
+        runMoneyMaintenance()
         true
     }.getOrDefault(false)
 
@@ -801,6 +1100,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 syncMessage = "Синхронізовано"
                 if (notify) showToast("Синхронізовано")
                 persist()
+                runMoneyMaintenance()
             } else {
                 syncPhase = if (outcome.offline) "offline" else "error"
                 syncMessage = outcome.message
@@ -845,7 +1145,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         persist()
     }
 
-    fun appVersion(): String = "1.0.2"
+    fun appVersion(): String = "1.0.3"
 
     fun dataFolderPath(): String = getApplication<Application>().filesDir.absolutePath
 

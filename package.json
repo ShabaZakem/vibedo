@@ -1,6 +1,6 @@
 {
   "name": "vibedo",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "VibeDo — локальний планувальник задач, трекер часу та калькулятор зарплати",
   "author": "VibeDo",
@@ -10,12 +10,15 @@
     "dev": "concurrently -k \"vite --port 5173 --strictPort\" \"wait-on tcp:127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "dev:web": "vite --port 5173 --strictPort",
     "typecheck": "tsc --noEmit",
+    "test": "node scripts/test-merge.cjs && node scripts/test-sync.cjs",
     "build": "tsc --noEmit && vite build",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win",
     "dist:dir": "npm run build && electron-builder --win --dir",
-    "android:debug": "cd android && gradlew.bat assembleDebug",
-    "android:release": "cd android && gradlew.bat assembleRelease"
+    "dist:linux": "npm run build && electron-builder --linux AppImage",
+    "dist:all": "npm run build && electron-builder --win --linux",
+    "android:debug": "cd android && ./gradlew assembleDebug",
+    "android:release": "cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.3",
@@ -78,6 +81,17 @@
     },
     "portable": {
       "artifactName": "VibeDo-Portable-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office",
+      "icon": "build/icons",
+      "maintainer": "VibeDo",
+      "synopsis": "Локальний планувальник задач, трекер часу та облік грошей",
+      "description": "VibeDo — локальний планувальник задач, трекер робочих годин, калькулятор зарплати та облік доходів і витрат",
+      "artifactName": "VibeDo-${version}-linux-${arch}.${ext}"
     }
   }
 }

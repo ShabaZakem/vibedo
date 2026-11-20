@@ -5,6 +5,12 @@ const fsp = require('node:fs/promises')
 const syncServer = require('./sync-server.cjs')
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL)
+
+// Running as root (containers, some CI images) requires the sandbox to be off.
+if (process.platform === 'linux' && typeof process.getuid === 'function' && process.getuid() === 0) {
+  app.commandLine.appendSwitch('no-sandbox')
+}
+
 const DATA_FILE = 'vibedo-data.json'
 const BACKUP_DIR = 'backups'
 const MAX_BACKUPS = 14
@@ -102,6 +108,17 @@ async function saveData(payload) {
 }
 
 async function createWindow() {
+  const isLinux = process.platform === 'linux'
+  // On Linux the native title bar and overlay are not supported, so we use a
+  // frameless window and rely on the in-app title bar (drag region in CSS).
+  const titleBarOverlay = isLinux
+    ? undefined
+    : {
+        color: nativeTheme.shouldUseDarkColors ? '#1c1c1c' : '#f3f3f3',
+        symbolColor: nativeTheme.shouldUseDarkColors ? '#f5f5f5' : '#1b1b1b',
+        height: 40,
+      }
+
   mainWindow = new BrowserWindow({
     width: 1380,
     height: 900,
@@ -112,12 +129,9 @@ async function createWindow() {
     title: 'VibeDo',
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     autoHideMenuBar: true,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: nativeTheme.shouldUseDarkColors ? '#1c1c1c' : '#f3f3f3',
-      symbolColor: nativeTheme.shouldUseDarkColors ? '#f5f5f5' : '#1b1b1b',
-      height: 40,
-    },
+    frame: isLinux ? false : true,
+    titleBarStyle: isLinux ? undefined : 'hidden',
+    titleBarOverlay,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -203,7 +217,7 @@ function buildMenu() {
 }
 
 app.whenReady().then(async () => {
-  app.setAppUserModelId('com.vibedo.app')
+  if (process.platform === 'win32') app.setAppUserModelId('com.vibedo.app')
   await ensurePaths()
   buildMenu()
   await createWindow()
@@ -297,17 +311,33 @@ ipcMain.handle('app:openDataFolder', async () => {
 
 ipcMain.handle('theme:set', async (_event, theme) => {
   if (!mainWindow) return { ok: false }
-  const dark = theme === 'dark'
-  mainWindow.setTitleBarOverlay?.({
-    color: dark ? '#1c1c1c' : '#f3f3f3',
-    symbolColor: dark ? '#f5f5f5' : '#1b1b1b',
-    height: 40,
-  })
+  // Linux uses a frameless window with an in-app title bar; the native overlay
+  // API exists on Electron but throws there, so skip it explicitly.
+  if (process.platform !== 'linux') {
+    const dark = theme === 'dark'
+    mainWindow.setTitleBarOverlay?.({
+      color: dark ? '#1c1c1c' : '#f3f3f3',
+      symbolColor: dark ? '#f5f5f5' : '#1b1b1b',
+      height: 40,
+    })
+  }
   return { ok: true }
 })
 
 ipcMain.handle('window:focus', async () => {
   mainWindow?.focus()
+  return { ok: true }
+})
+
+// Frameless Linux windows have no native controls, so the renderer draws them.
+ipcMain.handle('window:action', async (_event, action) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false }
+  if (action === 'minimize') mainWindow.minimize()
+  else if (action === 'maximize') {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+  } else if (action === 'close') mainWindow.close()
+  else return { ok: false }
   return { ok: true }
 })
 

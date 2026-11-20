@@ -301,7 +301,7 @@ function createDemoData() {
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     settings: {
       currency: '₴',
       hourlyRate: 250,
@@ -319,6 +319,7 @@ function createDemoData() {
       pomodoroBreakMinutes: 5,
       pomodoroAutoBreak: true,
       paydayReminderDays: 2,
+      moneyAutoPayday: true,
     },
     lists,
     tasks: tasks.map((task) => ({
@@ -342,9 +343,34 @@ function createDemoData() {
         date: key(-18),
         note: 'Аванс',
         amount: 8000,
+        transactionId: 'tx_payday_prev',
         createdAt: now - 20 * 86400000,
         updatedAt: now - 20 * 86400000,
       },
+    ],
+    categories: [
+      { id: 'cat_salary', name: 'Зарплата', color: '#0f7b6c', icon: '💼', kind: 'income', createdAt: now - 80 * 86400000, updatedAt: now - 80 * 86400000 },
+      { id: 'cat_freelance', name: 'Фріланс', color: '#2383e2', icon: '💻', kind: 'income', createdAt: now - 80 * 86400000, updatedAt: now - 80 * 86400000 },
+      { id: 'cat_home', name: 'Житло', color: '#d9730d', icon: '🏠', kind: 'expense', createdAt: now - 80 * 86400000, updatedAt: now - 80 * 86400000 },
+      { id: 'cat_food', name: 'Їжа', color: '#e03e3e', icon: '🛒', kind: 'expense', createdAt: now - 80 * 86400000, updatedAt: now - 80 * 86400000 },
+      { id: 'cat_transport', name: 'Транспорт', color: '#2383e2', icon: '🚌', kind: 'expense', createdAt: now - 80 * 86400000, updatedAt: now - 80 * 86400000 },
+      { id: 'cat_fun', name: 'Розваги', color: '#ad1a72', icon: '🎬', kind: 'expense', createdAt: now - 80 * 86400000, updatedAt: now - 80 * 86400000 },
+    ],
+    transactions: [
+      { id: 'tx_payday_prev', kind: 'income', amount: 8000, categoryId: 'cat_salary', date: key(-18), note: 'Аванс', recurringId: null, createdAt: now - 20 * 86400000, updatedAt: now - 20 * 86400000 },
+      { id: 'tx_freelance', kind: 'income', amount: 5600, categoryId: 'cat_freelance', date: key(-6), note: 'Лендинг для клієнта', recurringId: null, createdAt: now - 6 * 86400000, updatedAt: now - 6 * 86400000 },
+      { id: 'tx_rent', kind: 'expense', amount: 6500, categoryId: 'cat_home', date: key(-10), note: 'Оренда квартири', recurringId: 'rec_rent', createdAt: now - 10 * 86400000, updatedAt: now - 10 * 86400000 },
+      { id: 'tx_food', kind: 'expense', amount: 1240.5, categoryId: 'cat_food', date: key(-1), note: 'Тижневі закупівлі', recurringId: null, createdAt: now - 86400000, updatedAt: now - 86400000 },
+      { id: 'tx_transport', kind: 'expense', amount: 300, categoryId: 'cat_transport', date: key(-3), note: 'Проїзд', recurringId: null, createdAt: now - 3 * 86400000, updatedAt: now - 3 * 86400000 },
+      { id: 'tx_fun', kind: 'expense', amount: 480, categoryId: 'cat_fun', date: key(0), note: 'Кіно та кава', recurringId: null, createdAt: now, updatedAt: now },
+    ],
+    recurring: [
+      { id: 'rec_rent', kind: 'expense', amount: 6500, categoryId: 'cat_home', note: 'Оренда квартири', freq: 'monthly', interval: 1, nextDate: key(10), lastRunAt: now - 10 * 86400000, active: true, createdAt: now - 40 * 86400000, updatedAt: now - 10 * 86400000 },
+      { id: 'rec_subs', kind: 'expense', amount: 249, categoryId: 'cat_fun', note: 'Підписки', freq: 'monthly', interval: 1, nextDate: key(5), lastRunAt: now - 25 * 86400000, active: true, createdAt: now - 60 * 86400000, updatedAt: now - 25 * 86400000 },
+    ],
+    budgets: [
+      { id: 'bud_food', categoryId: 'cat_food', amount: 4000, period: 'month', createdAt: now - 30 * 86400000, updatedAt: now - 30 * 86400000 },
+      { id: 'bud_all', categoryId: 'all', amount: 25000, period: 'month', createdAt: now - 30 * 86400000, updatedAt: now - 30 * 86400000 },
     ],
     activeTimer: null,
     createdAt: now - 90 * 86400000,

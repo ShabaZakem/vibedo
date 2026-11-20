@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Paid
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Today
@@ -77,6 +78,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vibedo.app.data.TaskList
 import com.vibedo.app.data.normalizeData
 import com.vibedo.app.data.todayKey
+import com.vibedo.app.data.transactionsToCsv
 import com.vibedo.app.notifications.Notifications
 import com.vibedo.app.ui.CalendarScreen
 import com.vibedo.app.ui.ConfirmDialog
@@ -84,6 +86,7 @@ import com.vibedo.app.ui.DrawerContent
 import com.vibedo.app.ui.ListEditDialog
 import com.vibedo.app.ui.LocalVibe
 import com.vibedo.app.ui.LogoMark
+import com.vibedo.app.ui.MoneyScreen
 import com.vibedo.app.ui.NotificationsSheet
 import com.vibedo.app.ui.SalaryScreen
 import com.vibedo.app.ui.SettingsScreen
@@ -199,6 +202,23 @@ private fun VibeApp(
         }
     }
 
+    val csvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                val csv = transactionsToCsv(vm.data.transactions, vm.data.categories)
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(csv.toByteArray(Charsets.UTF_8))
+                }
+            }.onSuccess {
+                vm.showToast("CSV збережено")
+            }.onFailure {
+                vm.showToast("Не вдалося експортувати CSV")
+            }
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -305,6 +325,10 @@ private fun VibeApp(
                                 },
                             )
                             View.Time -> TimeScreen(vm)
+                            View.Money -> MoneyScreen(
+                                vm = vm,
+                                onExportCsv = { csvLauncher.launch("vibedo-money-${todayKey()}.csv") },
+                            )
                             View.Salary -> SalaryScreen(vm)
                             View.Calendar -> CalendarScreen(vm)
                             View.Stats -> StatsScreen(vm)
@@ -340,10 +364,10 @@ private fun VibeApp(
                     { it is View.Time },
                 ) { vm.navigate(View.Time); showSearch = false },
                 BottomItem(
-                    "Заробіток",
-                    Icons.Rounded.Wallet,
-                    { it is View.Salary },
-                ) { vm.navigate(View.Salary); showSearch = false },
+                    "Гроші",
+                    Icons.Rounded.Paid,
+                    { it is View.Money },
+                ) { vm.navigate(View.Money); showSearch = false },
                 BottomItem(
                     "Ще",
                     Icons.Rounded.MoreHoriz,
@@ -458,8 +482,9 @@ private fun VibeApp(
                     open = true,
                     title = "Імпортувати резервну копію?",
                     body = if (preview != null)
-                        "У файлі: ${preview.tasks.size} задач, ${preview.lists.size} списків і " +
-                            "${preview.entries.size} записів часу. Поточні дані буде замінено. " +
+                        "У файлі: ${preview.tasks.size} задач, ${preview.lists.size} списків, " +
+                            "${preview.entries.size} записів часу та ${preview.transactions.size} " +
+                            "транзакцій. Поточні дані буде замінено. " +
                             "Рекомендуємо спершу зробити експорт."
                     else "Файл не схожий на резервну копію VibeDo.",
                     confirmLabel = "Імпортувати",
@@ -525,6 +550,7 @@ private fun TopBar(
         }
         is View.ListView -> list?.name ?: "Список"
         View.Time -> "Трекер часу"
+        View.Money -> "Гроші"
         View.Salary -> "Заробіток"
         View.Calendar -> "Календар"
         View.Stats -> "Статистика"

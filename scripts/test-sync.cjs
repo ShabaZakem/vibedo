@@ -1,20 +1,24 @@
 const server = require('../electron/sync-server.cjs')
 
 let stored = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   updatedAt: 100,
   settings: { theme: 'light' },
   lists: [{ id: 'l1', name: 'Desktop', order: 0, updatedAt: 1 }],
   tasks: [{ id: 't1', title: 'Desktop task', updatedAt: 1 }],
   entries: [],
   paydays: [],
+  categories: [{ id: 'c1', name: 'Desktop category', updatedAt: 1 }],
+  transactions: [{ id: 'm1', amount: 10, updatedAt: 1 }],
+  recurring: [],
+  budgets: [],
 }
 
 async function main() {
   const status = await server.start({
     pin: '4821',
     port: 47899,
-    version: '1.0.2',
+    version: '1.0.3',
     getData: async () => stored,
     saveData: async (data) => {
       stored = data
@@ -39,13 +43,17 @@ async function main() {
   ).json()
   if (!pair.token) throw new Error('no token')
   const remote = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     updatedAt: 300,
     settings: { theme: 'dark' },
     lists: [{ id: 'l2', name: 'Phone', order: 1, updatedAt: 2 }],
     tasks: [{ id: 't2', title: 'Phone task', updatedAt: 2 }],
     entries: [],
     paydays: [],
+    categories: [{ id: 'c2', name: 'Phone category', updatedAt: 2 }],
+    transactions: [{ id: 'm2', amount: 20, updatedAt: 2 }],
+    recurring: [{ id: 'r1', amount: 30, updatedAt: 2 }],
+    budgets: [{ id: 'b1', amount: 100, updatedAt: 2 }],
   }
   const merged = await (
     await fetch(`${base}/api/sync`, {
@@ -69,6 +77,11 @@ async function main() {
     mergedLists: merged.lists.length === 2,
     newerSettings: merged.settings.theme === 'dark',
     persisted: stored.tasks.length === 2,
+    mergedCategories: merged.categories.length === 2,
+    mergedTransactions: merged.transactions.length === 2,
+    mergedRecurring: merged.recurring.length === 1,
+    mergedBudgets: merged.budgets.length === 1,
+    schemaVersionLatest: merged.schemaVersion === 3,
     unauthorizedRejected: unauthorized.status === 401,
   }
   console.log(checks)
